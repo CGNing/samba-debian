@@ -1,15 +1,24 @@
-FROM alpine:edge
+FROM debian:latest
+
+RUN mv /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list.d/debian.sources.bak &&\
+echo "Types: deb\n\
+URIs: http://mirrors.tuna.tsinghua.edu.cn/debian\n\
+Suites: bookworm bookworm-updates\n\
+Components: main contrib non-free non-free-firmware\n\
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg" > /etc/apt/sources.list.d/debian_tuna.sources &&\
+    apt update -y
 
 RUN set -eu && \
-    apk --no-cache add \
+    apt install -y\
     tini \
     bash \
     samba \
+    samba-client \
+    smbldap-tools \
     tzdata \
-    shadow && \
-    addgroup -S smb && \
-    rm -f /etc/samba/smb.conf && \
-    rm -rf /tmp/* /var/cache/apk/*
+    passwd && \
+    addgroup --system smb && \
+    rm -f /etc/samba/smb.conf
 
 COPY --chmod=755 samba.sh /usr/bin/samba.sh
 COPY --chmod=664 smb.conf /etc/samba/smb.default
@@ -27,4 +36,4 @@ ENV RW=true
 
 HEALTHCHECK --interval=60s --timeout=15s CMD smbclient --configfile=/etc/samba.conf -L \\localhost -U % -m SMB3
 
-ENTRYPOINT ["/sbin/tini", "--", "/usr/bin/samba.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/bin/samba.sh"]

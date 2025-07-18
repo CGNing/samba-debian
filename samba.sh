@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# This function checks for the existence of a specified Samba user and group. If the user does not exist, 
-# it creates a new user with the provided username, user ID (UID), group name, group ID (GID), and password. 
-# If the user already exists, it updates the user's UID and group association as necessary, 
-# and updates the password in the Samba database. The function ensures that the group also exists, 
+# This function checks for the existence of a specified Samba user and group. If the user does not exist,
+# it creates a new user with the provided username, user ID (UID), group name, group ID (GID), and password.
+# If the user already exists, it updates the user's UID and group association as necessary,
+# and updates the password in the Samba database. The function ensures that the group also exists,
 # creating it if necessary, and modifies the group ID if it differs from the provided value.
 add_user() {
     local cfg="$1"
@@ -33,11 +33,20 @@ add_user() {
     if ! id "$username" &>/dev/null; then
         [[ "$username" != "$USER" ]] && echo "User $username does not exist, creating user..."
         extra_args=()
-        # Check if home directory already exists, if so do not create home during user creation
-        if [ -d "$homedir" ]; then
-          extra_args=("${extra_args[@]}" -H)
+        # 添加系统名字环境变量
+        . /etc/os-release
+        if [[ "$ID" == "alpine" ]]; then
+            # Check if home directory already exists, if so do not create home during user creation
+            if [ -d "$homedir" ]; then
+                extra_args=("${extra_args[@]}" -H)
+            fi
+            adduser "${extra_args[@]}" -S -D -h "$homedir" -s /sbin/nologin -G "$groupname" -u "$uid" -g "Samba User" "$username" || { echo "Failed to create user $username"; return 1; }
+        else
+            if ! [ -d "$homedir" ]; then
+                extra_args=("${extra_args[@]}" -m)
+            fi
+            useradd "${extra_args[@]}" -r -d "$homedir" -s /usr/sbin/nologin -G "$groupname" -u "$uid" -c "Samba User" "$username" || { echo "Failed to create user $username"; return 1;}
         fi
-        adduser "${extra_args[@]}" -S -D -h "$homedir" -s /sbin/nologin -G "$groupname" -u "$uid" -g "Samba User" "$username" || { echo "Failed to create user $username"; return 1; }
     else
         # Check if the uid right,if not, change it
         local current_uid
@@ -52,7 +61,7 @@ add_user() {
     fi
 
     # Check if the user is a samba user
-    pdb_output=$(pdbedit -s "$cfg" -L)  #Do not combine the two commands into one, as this could lead to issues with the execution order and proper passing of variables. 
+    pdb_output=$(pdbedit -s "$cfg" -L)  #Do not combine the two commands into one, as this could lead to issues with the execution order and proper passing of variables.
     if echo "$pdb_output" | grep -q "^$username:"; then
         # skip samba password update if password is * or !
         if [[ "$password" != "*" && "$password" != "!" ]]; then
@@ -113,14 +122,14 @@ else
 
     # Set custom display name if provided
     if [ -n "$NAME" ] && [[ "${NAME,,}" != "data" ]]; then
-      sed -i "s/\[Data\]/\[$NAME\]/" "$config"    
+      sed -i "s/\[Data\]/\[$NAME\]/" "$config"
     fi
 
     # Update force user and force group in smb.conf
     sed -i "s/^\(\s*\)force user =.*/\1force user = $USER/" "$config"
     sed -i "s/^\(\s*\)force group =.*/\1force group = $group/" "$config"
 
-    # Verify if the RW variable is equal to false (indicating read-only mode) 
+    # Verify if the RW variable is equal to false (indicating read-only mode)
     if [[ "$RW" == [Ff0]* ]]; then
         # Adjust settings in smb.conf to set share to read-only
         sed -i "s/^\(\s*\)writable =.*/\1writable = no/" "$config"
