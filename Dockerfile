@@ -2,16 +2,23 @@
 
 FROM debian:trixie
 
-RUN echo "Types: deb\n\
-URIs: http://mirrors.ustc.edu.cn/debian\n\
-Suites: trixie trixie-updates\n\
-Components: main contrib non-free non-free-firmware\n\
-Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg" > /etc/apt/sources.list.d/custom.sources &&\
-echo "Package: *\nPin: origin deb.debian.org\nPin-Priority: 450" > /etc/apt/preferences.d/99-custom-priorities &&\
-    apt update -y
+RUN set -eu && \
+    printf '%s\n' \
+      'Types: deb' \
+      'URIs: http://mirrors.ustc.edu.cn/debian' \
+      'Suites: trixie trixie-updates' \
+      'Components: main contrib non-free non-free-firmware' \
+      'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+      > /etc/apt/sources.list.d/custom.sources && \
+    printf '%s\n' \
+      'Package: *' \
+      'Pin: origin deb.debian.org' \
+      'Pin-Priority: 450' \
+      > /etc/apt/preferences.d/99-custom-priorities && \
+    apt-get update -y
 
 RUN set -eu && \
-    apt install -y\
+    apt-get install -y --no-install-recommends \
     tini \
     bash \
     samba \
@@ -20,7 +27,7 @@ RUN set -eu && \
     tzdata \
     passwd && \
     rm -rf /var/lib/apt/lists/* && \
-    addgroup --system smb && \
+    groupadd -r smb && \
     rm -f /etc/samba/smb.conf
 
 COPY --chmod=755 samba.sh /usr/bin/samba.sh
