@@ -1,18 +1,13 @@
 name: Update
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - readme.md
-      - .github/workflows/hub.yml
+  workflow_dispatch:
 
 jobs:
   dockerHubDescription:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
-    - 
+    -
       name: Docker Hub Description
       uses: peter-evans/dockerhub-description@v5
       with:
