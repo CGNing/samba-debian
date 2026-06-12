@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-docker_secret="/run/secrets/pass"
+set -Eeuo pipefail
+
+secret="/run/secrets/pass"
 config="/etc/samba/smb.conf"
 
 # Check if the secret file exists and if its size is greater than zero
-if [ -s "$docker_secret" ]; then
-    LDAP_PASSWORD=$(cat "$docker_secret")
+if [ -s "$secret" ]; then
+    PASS=$(cat "$secret")
 fi
 
-smbpasswd -w "$LDAP_PASSWORD"
+smbpasswd -w "$PASS"
 
 # Set directory permissions
-[ -d /run/samba/msg.lock ] && chmod -R 0755 /run/samba/msg.lock
-[ -d /var/log/samba/cores ] && chmod -R 0700 /var/log/samba/cores
-[ -d /var/cache/samba/msg.lock ] && chmod -R 0755 /var/cache/samba/msg.lock
+[ -d /run/samba/msg.lock ] && chmod -R 0755 /run/samba/msg.lock || :
+[ -d /var/log/samba/cores ] && chmod -R 0700 /var/log/samba/cores || :
+[ -d /var/cache/samba/msg.lock ] && chmod -R 0755 /var/cache/samba/msg.lock || :
 
 # Start the Samba daemon with the following options:
 #  --configfile: Location of the configuration file.
