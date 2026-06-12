@@ -1,23 +1,13 @@
 # syntax=docker/dockerfile:1
 
-FROM debian:trixie
+ARG DEBIAN_VERSION=stable
 
-RUN set -eu && \
-    printf '%s\n' \
-      'Types: deb' \
-      'URIs: http://mirrors.ustc.edu.cn/debian' \
-      'Suites: trixie trixie-updates' \
-      'Components: main contrib non-free non-free-firmware' \
-      'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
-      > /etc/apt/sources.list.d/custom.sources && \
-    printf '%s\n' \
-      'Package: *' \
-      'Pin: origin deb.debian.org' \
-      'Pin-Priority: 450' \
-      > /etc/apt/preferences.d/99-custom-priorities && \
-    apt-get update -y
+FROM debian:${DEBIAN_VERSION}-slim
 
-RUN set -eu && \
+SHELL ["/bin/bash", "-o", "errexit", "-o", "nounset", "-o", "pipefail", "-c"]
+# Install required system packages and dependencies
+RUN apt-get update -y && \
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
     tini \
     bash \
@@ -26,8 +16,10 @@ RUN set -eu && \
     smbldap-tools \
     tzdata \
     passwd && \
-    rm -rf /var/lib/apt/lists/* && \
-    groupadd -r smb && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r smb && \
     rm -f /etc/samba/smb.conf
 
 COPY --chmod=755 samba.sh /usr/bin/samba.sh
