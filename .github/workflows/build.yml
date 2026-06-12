@@ -9,28 +9,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  shellcheck:
-    name: Test
-    uses: ./.github/workflows/check.yml
-  build:
-    name: Build
-    needs: shellcheck
+  precheck:
+    name: precheck
     runs-on: ubuntu-latest
     permissions:
-      actions: write
-      packages: write
+      packages: read
       contents: read
+    outputs:
+      latest_tag: ${{ steps.tags.outputs.latest_tag }}
+      debian_snapshot: ${{ steps.tags.outputs.debian_snapshot }}
+      latest_snapshot: ${{ steps.tags.outputs.latest_snapshot }}
+      latest_version: ${{ steps.tags.outputs.latest_version }}
+      latest_major: ${{ steps.tags.outputs.latest_major }}
+      latest_codename: ${{ steps.tags.outputs.latest_codename }}
+      exists: ${{ steps.check.outputs.exists }}
     steps:
-      -
-        name: Get remote package data
+      - name: Get remote package data
         id: tags
         run: |
           set -e -o pipefail
-          repo_name="${GITHUB_REPOSITORY##*/}"
-          if [ -z "$repo_name" ]; then
-            echo "ERROR: Unable to determine repository name from GITHUB_REPOSITORY" >&2
-            exit 1
-          fi
 
           debian_release=$(curl -fsSL https://deb.debian.org/debian/dists/stable/Release)
           debian_version=$(echo "$debian_release" | awk -F': ' '/^Version:/ {print $2}')
@@ -47,76 +44,93 @@ jobs:
             exit 1
           fi
 
-          tag=$(curl -fsSL -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/tags?per_page=10 |
+          latest_tag=$(curl -fsSL -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/tags?per_page=100 |
             jq -r '.[].name |
             select(startswith("v"))' |
             head -n 1)
-          if [ -z "$tag" ]; then
-            echo "WARNING: No tag found, using 'v0.00' as fallback" >&2
-            tag="v0.0.0"
+          if [ -z "$latest_tag" ]; then
+            latest_tag=${{ github.event.repository.default_branch }}
+            echo "WARNING: No tag found, using '${latest_tag}' as fallback" >&2
           fi
 
-          echo "repo_name=${repo_name}" >> $GITHUB_ENV
-          echo "tag=${tag}" >> $GITHUB_OUTPUT
-          echo "latest_snapshot=${tag}-${debian_snapshot}" >> $GITHUB_OUTPUT
-          echo "latest_version=${tag}-${debian_version}" >> $GITHUB_OUTPUT
-          echo "latest_major=${tag}-${debian_version_major}" >> $GITHUB_OUTPUT
-          echo "latest_codename=${tag}-${debian_codename}" >> $GITHUB_OUTPUT
-      -
-        name: Check if the tag exists locally
-        uses: action-pack/tag-exists@v1
-        id: checkTag
-        with:
-          tag: '${{ steps.tags.outputs.latest_snapshot }}'
-      -
-        name: Finish when found
+          echo "latest_tag=${latest_tag}" >> $GITHUB_OUTPUT
+          echo "debian_snapshot=${debian_snapshot}" >> $GITHUB_OUTPUT
+          echo "latest_snapshot=${latest_tag}-${debian_snapshot}" >> $GITHUB_OUTPUT
+          echo "latest_version=${latest_tag}-${debian_version}" >> $GITHUB_OUTPUT
+          echo "latest_major=${latest_tag}-${debian_version_major}" >> $GITHUB_OUTPUT
+          echo "latest_codename=${latest_tag}-${debian_codename}" >> $GITHUB_OUTPUT
+      - name: Check if the tag exists in GHCR
+        id: check
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          TAG: ${{ steps.tags.outputs.latest_snapshot }}
         run: |
-          val="${{ steps.checkTag.outputs.exists }}"
-          echo "exists=${val}" >> $GITHUB_ENV
-      -
-        name: Checkout
-        if: env.exists == 'false'
+          if docker manifest inspect "${IMAGE}:${TAG}" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${{ steps.tags.outputs.latest_snapshot }} exists"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Tag ${{ steps.tags.outputs.latest_snapshot }} do not exists"
+          fi
+  shellcheck:
+    name: Test
+    needs: precheck
+    uses: ./.github/workflows/check.yml
+  build:
+    name: Build
+    needs: [precheck, shellcheck]
+    if: needs.precheck.outputs.exists == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      packages: write
+      contents: read
+    steps:
+      - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ needs.precheck.outputs.latest_tag }}
           fetch-depth: 0
-      -
-        name: Docker metadata
+      - name: Get repo name
+        id: repo_name
+        run: |
+          set -e -o pipefail
+          repo_name="${GITHUB_REPOSITORY##*/}"
+          if [ -z "$repo_name" ]; then
+            echo "ERROR: Unable to determine repository name from GITHUB_REPOSITORY ${GITHUB_REPOSITORY}" >&2
+            exit 1
+          fi
+          echo "repo_name=${repo_name}" >> $GITHUB_OUTPUT
+      - name: Docker metadata
         id: meta
-        if: env.exists == 'false'
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@v5
         with:
           context: git
           images: |
             ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=${{ steps.tags.outputs.latest_snapshot }},priority=450
-            type=raw,value=${{ steps.tags.outputs.latest_version }},priority=350
-            type=raw,value=${{ steps.tags.outputs.latest_major }},priority=250
-            type=raw,value=${{ steps.tags.outputs.latest_codename }},priority=150
+            type=raw,value=${{ needs.precheck.outputs.latest_snapshot }},priority=450
+            type=raw,value=${{ needs.precheck.outputs.latest_version }},priority=350
+            type=raw,value=${{ needs.precheck.outputs.latest_major }},priority=250
+            type=raw,value=${{ needs.precheck.outputs.latest_codename }},priority=150
             type=raw,value=latest,priority=100
           labels: |
-            org.opencontainers.image.title=${{ env.repo_name }}
+            org.opencontainers.image.title=${{ steps.repo_name.outputs.repo_name }}
         env:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
-      -
-        name: Login to GitHub Container Registry
-        if: env.exists == 'false'
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      -
-        name: Set up Docker Buildx
-        if: env.exists == 'false'
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
-      -
-        name: Build Docker image
-        if: env.exists == 'false'
+      - name: Build Docker image
         uses: docker/build-push-action@v7
         with:
-          context: .
+          context: ./image
           push: true
           provenance: false
           platforms: linux/amd64,linux/arm64,linux/arm
@@ -124,4 +138,4 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
           build-args: |
-            VERSION_ARG=${{ steps.tags.outputs.latest_snapshot }}
+            DEBIAN_VERSION=${{ needs.precheck.outputs.debian_snapshot }}
