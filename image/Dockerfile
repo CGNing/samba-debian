@@ -22,7 +22,7 @@ RUN apt-get update -y && \
 RUN groupadd -r smb && \
     rm -f /etc/samba/smb.conf
 
-COPY --chmod=755 samba.sh /usr/bin/samba.sh
+COPY --chmod=755 scripts/ /usr/bin/scripts/
 COPY --chmod=664 smb.conf /etc/samba/smb.default
 
 VOLUME /storage
@@ -38,4 +38,4 @@ ENV RW=true
 
 HEALTHCHECK --interval=60s --timeout=15s CMD smbclient --configfile=/etc/samba.conf -L \\localhost -U % -m SMB3
 
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/bin/samba.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/bin/scripts/samba.sh"]
