@@ -1,0 +1,17 @@
+# Copyright Broadcom, Inc. All Rights Reserved.
+# SPDX-License-Identifier: APACHE-2.0
+
+services:
+  samba-ldap:
+    build:
+      context: ../image
+      dockerfile: Dockerfile
+    develop:
+      watch:
+        - action: rebuild
+          path: ../image
+    stdin_open: true
+    tty: true
+    ports:
+      - 445:445
+    # entrypoint: ["/bin/bash"]

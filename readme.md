@@ -119,6 +119,12 @@ where:
 - `GID` The numerical id of the primary user group.
 - `password` The clear text password of the user. The password can not contain `:`,`\n` or `\r`.
 - `homedir` Optional field for setting the home directory of the user.
+- `LDAP_HOST`
+- `LDAP_PORT`
+- `LDAP_BIND_DN`
+- `LDAP_BIND_PASSWORD`
+- `LDAP_BASE_DN`
+- `LDAP_WAIT_INTERVAL`
 
 ## Stars 🌟
 [![Stars](https://starchart.cc/dockur/samba.svg?variant=adaptive)](https://starchart.cc/dockur/samba)
